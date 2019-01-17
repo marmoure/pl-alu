@@ -48,6 +48,61 @@ xor(0, 1,  1 ).
 xor(1, 0,  1 ).
 xor(1, 1,  0 ).
 
+/*************
+   Half Adder Gate
+    _______
+  A-|     |-sum
+    | hadd|
+  B-|_____|-carry
+*************/
+%   A  B  sum carry
+
+halfadder(A,B,S,C) :-
+	xor(A, B,  S ),
+	and(A, B,  C ).
+/*************
+   Full Adder Gate
+    _______
+  A-|     |-sum
+  c-| fadd|
+  B-|_____|-carry
+*************/
+%   A  B  sum carry
+
+fulladder(A,B,C,S,Carry) :-
+	halfadder(A, B,  AB,Cab ),
+	halfadder(AB, C,  S, Cs ),
+	or(Cab,Cs,Carry).
+
+/*************
+    Add16 Gate
+    _______
+  A-|     |-sum
+    |add16|
+  B-|_____|-
+*************/
+%   A[16]  B[16]  sum[16] 
+
+
+add16([A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16],[B1,B2,B3,B4,B5,B6,B7,B8,B9,B10,B11,B12,B13,B14,B15,B16],[O1,O2,O3,O4,O5,O6,O7,O8,O9,O10,O11,O12,O13,O14,O15,O16]) :-
+    halfadder(A1,B1,O1,C1),
+    fulladder(A2,B2,C1,O2,C2),
+    fulladder(A3,B3,C2,O3,C3),
+    fulladder(A4,B4,C3,O4,C4),
+    fulladder(A5,B5,C4,O5,C5),
+    fulladder(A6,B6,C5,O6,C6),
+    fulladder(A7,B7,C6,O7,C7),
+    fulladder(A8,B8,C7,O8,C8),
+    fulladder(A9,B9,C8,O9,C9),
+    fulladder(A10,B10,C9,O10,C10),
+    fulladder(A11,B11,C10,O11,C11),
+    fulladder(A12,B12,C11,O12,C12),
+    fulladder(A13,B13,C12,O13,C13),
+    fulladder(A14,B14,C13,O14,C14),
+    fulladder(A15,B15,C14,O15,C15),
+    fulladder(A16,B16,C15,O16,C16).
+
+
 /********
  
      MUX Gate
@@ -120,6 +175,17 @@ and16([A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16],[B1,B2,B3,B4,B5,B
 or8way([0,0,0,0,0,0,0],0).
 or8way([_,_,_,_,_,_,_],1).
 
+/********
+ 
+ OR16WAY Gate
+        _________
+        |       |
+ IN[16]-|OR16WAY|-OUT
+        |_______|
+ ********/
+% IN[16] OUT
+or16way([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],0).
+or16way([_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_],1).
 /************
  * NOT 16
  * 	_________
@@ -177,92 +243,31 @@ and16([A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16],[B1,B2,B3,B4,B5,B
     mux(A15,B15,sel,O15),
     mux(A16,B16,sel,O16).
 
+%the final boss
 
-% still shit ton of stuff
-%
-%
-% the final step is the ALU 
-%
-// This file is part of www.nand2tetris.org
-// and the book "The Elements of Computing Systems"
-// by Nisan and Schocken, MIT Press.
-// File name: projects/02/ALU.hdl
-
-/**
- * The ALU. Computes one of the following functions:
- * x+y, x-y, y-x, 0, 1, -1, x, y, -x, -y, !x, !y,
- * x+1, y+1, x-1, y-1, x&y, x|y on two 16-bit inputs, 
- * according to 6 input bits denoted zx,nx,zy,ny,f,no.
- * The bit-combinations that yield each function are 
- * documented in the book. In addition, the ALU 
- * computes two 1-bit outputs: if the ALU output
- * is 0, zr is set to 1; otherwise zr is set to 0;
- * If out<0, ng is set to 1; otherwise ng is set to 0.
-
-// Implementation: the ALU manipulates the x and y
-// inputs and then operates on the resulting values, 
-// as follows:
-// if (zx==1) set x = 0        // 16-bit constant
-// if (nx==1) set x = ~x       // bitwise "not"
-// if (zy==1) set y = 0        // 16-bit constant
-// if (ny==1) set y = ~y       // bitwise "not"
-// if (f==1)  set out = x + y  // integer 2's complement addition
-// if (f==0)  set out = x & y  // bitwise "and"
-// if (no==1) set out = ~out   // bitwise "not"
-// if (out==0) set zr = 1
-// if (out<0) set ng = 1
-
-  
-CHIP ALU {
-    IN  
-        x[16], y[16],  // 16-bit inputs        
-        zx, // zero the x input?
-        nx, // negate the x input?
-        zy, // zero the y input?
-        ny, // negate the y input?
-        f,  // compute  out = x + y (if 1) or out = x & y (if 0)
-        no; // negate the out output?
-
-    OUT 
-        out[16], // 16-bit output
-        zr, // 1 if (out==0), 0 otherwise
-        ng; // 1 if (out<0),  0 otherwise
-
-    PARTS:
-
-    ///////////////
-    // Starting from the input, then working towards output.
-
-    // selecting whether to set x and y to zeros
-    Mux16(a=x, b=false, sel=zx, out=x1);
-    Mux16(a=y, b=false, sel=zy, out=y1);
-
-    // now handling nx, ny
-    Not16(in=x1, out=notx1);
-    Mux16(a=x1, b=notx1, sel=nx, out=x2);
-    Not16(in=y1, out=noty1);
-    Mux16(a=y1, b=noty1, sel=ny, out=y2);
-
-    // And, combinging them ... handling f
-    And16(a=x2, b=y2, out=xandy);
-    Add16(a=x2, b=y2, out=xplusy);
-    Mux16(a=xandy, b=xplusy, sel=f, out=xy);
-
-    // finally, negate the output
-    // if out<0, MSB will be 1, so can set that here
-    Not16(in=xy, out=notxy);
-    Mux16(a=xy, b=notxy, sel=no, out[15]=ng, out[0..7]=part1, out[8..15]=part2, out=out);
-
-    // if all of out = 0, then Or8Way(out[0..7]) or Or8Way(out[8..15]) is false ... 
-    Not(in=nonzero, out=zr); 
-    Or(a=or1, b=or2, out=nonzero); // checking if any digits are nonzero
-    Or8Way(in=part1, out=or1); // checking each 8-bit chunk for nonzero
-    Or8Way(in=part2, out=or2);
-    
-    
-}
-
-**/
+alu([A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16],[B1,B2,B3,B4,B5,B6,B7,B8,B9,B10,B11,B12,B13,B14,B15,B16],ZX,NX,ZY,NY,F,NO,[O1,O2,O3,O4,O5,O6,O7,O8,O9,O10,O11,O12,O13,O14,O15,O16],ZR,NG) :-
+	%setting 0 using zx and zy
+	mux16([A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],zx,[A01,A02,A03,A04,A05,A06,A07,A08,A09,A010,A011,A012,A013,A014,A015,A016]),
+	mux16([B1,B2,B3,B4,B5,B6,B7,B8,B9,B10,B11,B12,B13,B14,B15,B16],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],zy,[B01,B02,B03,B04,B05,B06,B07,B08,B09,B010,B011,B012,B013,B014,B015,B016]),
 
 
-%//MUX16 and16 not16 not or or8way
+	%the not function using nx and ny
+	not16([A01,A02,A03,A04,A05,A06,A07,A08,A09,A010,A011,A012,A013,A014,A015,A016],[NA1,NA2,NA3,NA4,NA5,NA6,NA7,NA8,NA9,NA10,NA11,NA12,NA13,NA14,NA15,NA16]),
+	not16([B01,B02,B03,B04,B05,B06,B07,B08,B09,B010,B011,B012,B013,B014,B015,B016],[NB1,NB2,NB3,NB4,NB5,NB6,NB7,NB8,NB9,NB10,NB11,NB12,NB13,NB14,NB15,NB16],
+
+	mux16([A01,A02,A03,A04,A05,A06,A07,A08,A09,A010,A011,A012,A013,A014,A015,A016],[NA1,NA2,NA3,NA4,NA5,NA6,NA7,NA8,NA9,NA10,NA11,NA12,NA13,NA14,NA15,NA16],NX,[AN1,AN2,AN3,AN4,AN5,AN6,AN7,AN8,AN9,AN10,AN11,AN12,AN13,AN14,AN15,AN16]),
+	mux16([B01,B02,B03,B04,B05,B06,B07,B08,B09,B010,B011,B012,B013,B014,B015,B016],[NB1,NB2,NB3,NB4,NB5,NB6,NB7,NB8,NB9,NB10,NB11,NB12,NB13,NB14,NB15,NB16],NY,[BN1,BN2,BN3,BN4,BN5,BN6,BN7,BN8,BN9,BN10,BN11,BN12,BN13,BN14,BN15,BN16]),
+
+	%the current x=> ANn and y=> BNn
+	add16([AN1,AN2,AN3,AN4,AN5,AN6,AN7,AN8,AN9,AN10,AN11,AN12,AN13,AN14,AN15,AN16],[BN1,BN2,BN3,BN4,BN5,BN6,BN7,BN8,BN9,BN10,BN11,BN12,BN13,BN14,BN15,BN16],[ADD1,ADD2,ADD3,ADD4,ADD5,ADD6,ADD7,ADD8,ADD9,ADD10,ADD11,ADD12,ADD13,ADD14,ADD15,ADD16]),
+
+	and16([AN1,AN2,AN3,AN4,AN5,AN6,AN7,AN8,AN9,AN10,AN11,AN12,AN13,AN14,AN15,AN16],[BN1,BN2,BN3,BN4,BN5,BN6,BN7,BN8,BN9,BN10,BN11,BN12,BN13,BN14,BN15,BN16],[AND1,AND2,AND3,AND4,AND5,AND6,AND7,AND8,AND9,AND10,AND11,AND12,AND13,AND14,AND15,AND16]),
+
+
+	mux16([ADD1,ADD2,ADD3,ADD4,ADD5,ADD6,ADD7,ADD8,ADD9,ADD10,ADD11,ADD12,ADD13,ADD14,ADD15,ADD16],[AND1,AND2,AND3,AND4,AND5,AND6,AND7,AND8,AND9,AND10,AND11,AND12,AND13,AND14,AND15,AND16],F,[XY1,XY2,XY3,XY4,XY5,XY6,XY7,XY8,XY9,XY10,XY11,XY12,XY13,XY14,XY15,XY16]),
+
+	not16([XY1,XY2,XY3,XY4,XY5,XY6,XY7,XY8,XY9,XY10,XY11,XY12,XY13,XY14,XY15,XY16],[NXY1,NXY2,NXY3,NXY4,NXY5,NXY6,NXY7,NXY8,NXY9,NXY10,NXY11,NXY12,NXY13,NXY14,NXY15,NXY16]),
+	mux16([XY1,XY2,XY3,XY4,XY5,XY6,XY7,XY8,XY9,XY10,XY11,XY12,XY13,XY14,XY15,XY16],[NXY1,NXY2,NXY3,NXY4,NXY5,NXY6,NXY7,NXY8,NXY9,NXY10,NXY11,NXY12,NXY13,NXY14,NXY15,NXY16],NO,[O1,O2,O3,O4,O5,O6,O7,O8,O9,O10,O11,O12,O13,O14,O15,O16]),
+		
+	or16way([OO1,OO2,OO3,OO4,OO5,OO6,OO7,OO8,OO9,OO10,OO11,OO12,OO13,OO14,OO15,OO16],OZR),
+	not(OZR,ZR).
